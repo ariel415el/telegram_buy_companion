@@ -19,10 +19,12 @@ Live shared apartment tracker for Modiin house hunt.
    - **Bot Settings** → **Group Privacy** → **Turn off**
    - If the bot was already in the group, remove it and add it again after turning privacy off
 
-## How to use
-- Paste a Yad2 / Madlan / Keyz link → added immediately (no AI)
-- Or send a text description and/or photos of a listing → Gemini parses it into a row
-- Or: `/add שם | מחיר | חדרים | קישור`
+## How to use (Telegram `@bu_companion_bot`)
+- `/help` — short usage
+- Paste a Yad2 / Madlan / Keyz link → added immediately
+- Or send a text description and/or photos → Gemini parses it
+- `/add שם | מחיר | חדרים | קישור` — manual add
+- Duplicates (same URL or same street+price) update the existing row
 - Within about a minute it appears on the site
 
 ## Secrets (GitHub Actions)

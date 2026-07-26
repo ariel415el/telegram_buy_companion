@@ -98,15 +98,25 @@ function largestPhotoFileId(msg) {
   return msg.photo[msg.photo.length - 1].file_id;
 }
 
+const HELP_TEXT =
+  "מוסיף דירות לאתר המשותף שלנו.\n\n" +
+  "איך להשתמש:\n" +
+  "• שלחו קישור (יד2 / מדלן / Keyz) — מתווסף ישר\n" +
+  "• או תיאור + תמונות — AI מפרסר ומוסיף\n" +
+  "• /add שם | מחיר | חדרים | קישור — הוספה ידנית\n" +
+  "• /help — ההודעה הזו\n\n" +
+  "דירה שכבר קיימת מתעדכנת במקום להיווצר פעמיים.";
+
 async function handleJob(job) {
   const { chatId, text, photoFileIds } = job;
 
-  if (text.startsWith("/start") || text.startsWith("/help")) {
-    await send(
-      chatId,
-      "שלחו קישור למודעה (Yad2 / Madlan / Keyz) — או תיאור/תמונות של דירה ואני אפרסר עם AI.\n" +
-        "אפשר גם: /add שם | מחיר | חדרים | קישור"
-    );
+  if (
+    text.startsWith("/start") ||
+    text.startsWith("/help") ||
+    text.startsWith("/start@") ||
+    text.startsWith("/help@")
+  ) {
+    await send(chatId, HELP_TEXT);
     return;
   }
 
@@ -117,8 +127,11 @@ async function handleJob(job) {
       await send(chatId, "פורמט: /add שם | מחיר | חדרים | קישור");
       return;
     }
-    const error = await upsertApartment(apt);
-    await send(chatId, error ? `שגיאה: ${error}` : `נוספה: ${apt.name}`);
+    const { error, created } = await saveApartment(apt);
+    await send(
+      chatId,
+      error ? `שגיאה: ${error}` : created ? `נוספה: ${apt.name}` : `כבר קיימת, עודכנה: ${apt.name}`
+    );
     return;
   }
 
@@ -127,8 +140,14 @@ async function handleJob(job) {
     const results = [];
     for (const url of listingUrls) {
       const apt = listingFromUrl(url, text);
-      const error = await upsertApartment(apt);
-      results.push(error ? `שגיאה עבור ${apt.name}: ${error}` : `נוספה/עודכנה: ${apt.name}`);
+      const { error, created } = await saveApartment(apt);
+      results.push(
+        error
+          ? `שגיאה עבור ${apt.name}: ${error}`
+          : created
+            ? `נוספה: ${apt.name}`
+            : `כבר קיימת, עודכנה: ${apt.name}`
+      );
     }
     await send(chatId, results.join("\n"));
     return;
@@ -164,12 +183,14 @@ async function handleJob(job) {
     if (thumbUrl) apt.thumb = thumbUrl;
   }
 
-  const error = await upsertApartment(apt);
+  const { error, created } = await saveApartment(apt);
   await send(
     chatId,
     error
       ? `שגיאה: ${error}`
-      : `נוספה/עודכנה (AI): ${apt.name}${apt.price ? ` · ${apt.price.toLocaleString("en-US")} ₪` : ""}`
+      : `${created ? "נוספה" : "כבר קיימת, עודכנה"} (AI): ${apt.name}${
+          apt.price ? ` · ${apt.price.toLocaleString("en-US")} ₪` : ""
+        }`
   );
 }
 
@@ -349,8 +370,104 @@ async function send(chatId, text) {
   await tg("sendMessage", { chat_id: chatId, text });
 }
 
+/** Save apartment, reusing an existing row when URL/name+price match. */
+async function saveApartment(apt) {
+  const existing = await findDuplicate(apt);
+  const row = {
+    ...apt,
+    id: existing?.id || apt.id,
+    // keep existing thumb if new one missing
+    thumb: apt.thumb || existing?.thumb || null,
+    visited: existing?.visited ?? apt.visited ?? false,
+    expired: existing?.expired ?? apt.expired ?? false,
+    updated_at: new Date().toISOString(),
+  };
+  const error = await upsertApartment(row);
+  return { error, created: !existing, id: row.id };
+}
+
+async function listApartments() {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/apartments?select=id,name,neighborhood,price,rooms,url,thumb,visited,expired`,
+    {
+      headers: {
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${SERVICE_KEY}`,
+      },
+    }
+  );
+  if (!res.ok) {
+    console.error("listApartments", await res.text());
+    return [];
+  }
+  return res.json();
+}
+
+async function findDuplicate(apt) {
+  const rows = await listApartments();
+  const urlKey = listingKey(apt.url);
+  if (urlKey) {
+    const byUrl = rows.find((r) => listingKey(r.url) === urlKey);
+    if (byUrl) return byUrl;
+  }
+  return rows.find((r) => isSameListing(apt, r)) || null;
+}
+
+function listingKey(url) {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "").toLowerCase();
+    const path = u.pathname.replace(/\/+$/, "");
+    if (/yad2\.co\.il$/i.test(host)) {
+      const m = path.match(/\/(?:item\/(?:[^/]+\/)?|s\/c\/)([a-z0-9]+)/i) || path.match(/\/([a-z0-9]{6,})$/i);
+      return m ? `yad2:${m[1].toLowerCase()}` : `yad2:${path}`;
+    }
+    if (/madlan\.co\.il$/i.test(host)) {
+      const m = path.match(/\/listings\/([^/]+)/i);
+      return m ? `madlan:${m[1]}` : `madlan:${path}`;
+    }
+    if (/keyz\.ai$/i.test(host)) {
+      const m = path.match(/\/listings\/([^/]+)/i);
+      return m ? `keyz:${m[1]}` : `keyz:${path}`;
+    }
+    if (/facebook\.com|fb\.watch/i.test(host)) {
+      return `fb:${path}`;
+    }
+    return `${host}${path}`;
+  } catch {
+    return String(url).trim().toLowerCase();
+  }
+}
+
+function normTokens(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/[״"']/g, "")
+    .replace(/[^\u0590-\u05ffa-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter((t) => t.length >= 2);
+}
+
+function isSameListing(a, b) {
+  if (a.price != null && b.price != null && Number(a.price) !== Number(b.price)) return false;
+  if (a.rooms != null && b.rooms != null && Number(a.rooms) !== Number(b.rooms)) return false;
+
+  const aTokens = new Set([...normTokens(a.name), ...normTokens(a.neighborhood)]);
+  const bTokens = new Set([...normTokens(b.name), ...normTokens(b.neighborhood)]);
+  if (!aTokens.size || !bTokens.size) return false;
+
+  let inter = 0;
+  for (const t of aTokens) if (bTokens.has(t)) inter++;
+  const union = aTokens.size + bTokens.size - inter;
+  const jaccard = inter / union;
+  // same price (or both null) + overlapping street/neighborhood tokens
+  return jaccard >= 0.45 && inter >= 2;
+}
+
 async function upsertApartment(apt) {
-  const row = { ...apt, updated_at: new Date().toISOString() };
+  const row = { ...apt, updated_at: apt.updated_at || new Date().toISOString() };
   const res = await fetch(`${SUPABASE_URL}/rest/v1/apartments?on_conflict=id`, {
     method: "POST",
     headers: {
