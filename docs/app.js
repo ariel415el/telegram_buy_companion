@@ -16,7 +16,6 @@
 
   let apartments = [];
   let verdicts = {};
-  let noteTimers = {};
 
   function ensureVerdict(id) {
     if (!verdicts[id]) verdicts[id] = { relevant: true, note: "" };
@@ -80,7 +79,7 @@
           <td>${escapeHtml(fmtArea(a))}</td>
           <td>${link}</td>
           <td class="verdict">
-            <input type="text" maxlength="120" placeholder="למה? בקצרה..."
+            <input type="text" maxlength="120" placeholder="הערה..."
               data-note="${escapeHtml(a.id)}" value="${escapeHtml(st.note)}">
           </td>
           <td class="actions">${action}</td>
@@ -131,17 +130,23 @@
   }
 
   async function saveNote(id, note) {
+    const prev = ensureVerdict(id);
+    if ((prev.note || "") === note && prev._noteSaved) return;
     const updated_at = new Date().toISOString();
-    ensureVerdict(id).note = note;
-    ensureVerdict(id).updated_at = updated_at;
-    render();
+    prev.note = note;
+    prev.updated_at = updated_at;
+    prev._noteSaved = true;
     const { error } = await sb.from("verdicts").upsert({
       apartment_id: id,
-      relevant: ensureVerdict(id).relevant,
+      relevant: prev.relevant,
       note,
       updated_at,
     });
-    if (error) setStatus("שגיאה בשמירת הערה: " + error.message, "err");
+    if (error) {
+      setStatus("שגיאה בשמירת הערה: " + error.message, "err");
+      return;
+    }
+    render();
   }
 
   async function deleteApartment(id) {
@@ -174,13 +179,27 @@
     setRelevant(id, action === "keep");
   });
 
+  // Keep typing local only — save + reorder on blur or Enter
   document.body.addEventListener("input", (e) => {
     const input = e.target.closest("input[data-note]");
     if (!input) return;
     const id = input.getAttribute("data-note");
     ensureVerdict(id).note = input.value;
-    clearTimeout(noteTimers[id]);
-    noteTimers[id] = setTimeout(() => saveNote(id, input.value), 400);
+    ensureVerdict(id)._noteSaved = false;
+  });
+
+  document.body.addEventListener("keydown", (e) => {
+    const input = e.target.closest("input[data-note]");
+    if (!input || e.key !== "Enter") return;
+    e.preventDefault();
+    input.blur();
+  });
+
+  document.body.addEventListener("focusout", (e) => {
+    const input = e.target.closest("input[data-note]");
+    if (!input) return;
+    const id = input.getAttribute("data-note");
+    saveNote(id, input.value);
   });
 
   function applyApartmentRows(rows) {
