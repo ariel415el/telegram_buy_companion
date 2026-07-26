@@ -45,6 +45,8 @@ a { color: var(--accent); text-decoration: none; }
 .btn:hover { background:#f2f2ee; }
 .btn.keep { color: var(--ok); border-color:#cfe8d5; }
 .btn.drop { color: var(--no); border-color:#efd0d0; }
+.btn.del { color: #666; border-color: var(--line); margin-inline-start: 4px; }
+.btn.del:hover { color: var(--no); border-color:#efd0d0; background:#fff5f5; }
 .empty-state { padding:18px; color:var(--muted); font-size:0.9rem; }
 .section-relevant h2 { color: var(--ok); }
 .section-dropped h2 { color: var(--no); }

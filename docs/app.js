@@ -64,9 +64,10 @@
           ? `<a href="${escapeHtml(a.url)}" target="_blank" rel="noopener">מודעה</a>`
           : "—";
         const action =
-          mode === "relevant"
+          (mode === "relevant"
             ? `<button type="button" class="btn drop" data-action="drop" data-id="${escapeHtml(a.id)}">לא רלוונטי</button>`
-            : `<button type="button" class="btn keep" data-action="keep" data-id="${escapeHtml(a.id)}">רלוונטי</button>`;
+            : `<button type="button" class="btn keep" data-action="keep" data-id="${escapeHtml(a.id)}">רלוונטי</button>`) +
+          ` <button type="button" class="btn del" data-action="delete" data-id="${escapeHtml(a.id)}" title="מחיקה">מחק</button>`;
         return `<tr>
           <td class="num">${i + 1}</td>
           <td class="thumb">${thumb}</td>
@@ -143,10 +144,34 @@
     if (error) setStatus("שגיאה בשמירת הערה: " + error.message, "err");
   }
 
+  async function deleteApartment(id) {
+    const apt = apartments.find((a) => a.id === id);
+    const label = apt?.name || id;
+    if (!confirm(`למחוק את "${label}" מהאתר?`)) return;
+
+    apartments = apartments.filter((a) => a.id !== id);
+    delete verdicts[id];
+    render();
+
+    const { error } = await sb.from("apartments").delete().eq("id", id);
+    if (error) {
+      setStatus("שגיאה במחיקה: " + error.message, "err");
+      await loadAll();
+      return;
+    }
+    setStatus("נמחק · " + label, "ok");
+  }
+
   document.body.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-action]");
     if (!btn) return;
-    setRelevant(btn.getAttribute("data-id"), btn.getAttribute("data-action") === "keep");
+    const id = btn.getAttribute("data-id");
+    const action = btn.getAttribute("data-action");
+    if (action === "delete") {
+      deleteApartment(id);
+      return;
+    }
+    setRelevant(id, action === "keep");
   });
 
   document.body.addEventListener("input", (e) => {
