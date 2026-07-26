@@ -1,0 +1,33 @@
+name: Telegram bot poller
+
+on:
+  schedule:
+    - cron: "* * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: telegram-bot
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Telegram offset
+        uses: actions/cache@v4
+        with:
+          path: .telegram-offset
+          key: telegram-offset-${{ github.run_id }}
+          restore-keys: |
+            telegram-offset-
+
+      - name: Poll Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OFFSET_FILE: .telegram-offset
+        run: node scripts/telegram-poll.mjs
