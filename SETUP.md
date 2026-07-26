@@ -5,7 +5,7 @@ Live shared apartment tracker for Modiin house hunt.
 ## Stack
 - **GitHub Pages** — hosts the website
 - **Supabase** — shared database (apartments + your relevance marks)
-- **Telegram bot** `@bu_companion_bot` — links / text / photos → site (GitHub Action poller every minute)
+- **Telegram bot** `@bu_companion_bot` — links / text / photos → site (Supabase Edge Function webhook, near-realtime)
 - **Gemini Flash** — parses free-text descriptions and listing photos into apartment rows
 
 ## Add the bot to your group
@@ -26,7 +26,7 @@ Live shared apartment tracker for Modiin house hunt.
 - `/add שם | מחיר | חדרים | קישור` — manual add
 - `/costs` — Gemini usage/cost today and total
 - Duplicates (same URL or same street+price) update the existing row
-- Within about a minute it appears on the site
+- Appears on the site within a few seconds
 
 ## Secrets (GitHub Actions)
 - `TELEGRAM_BOT_TOKEN`

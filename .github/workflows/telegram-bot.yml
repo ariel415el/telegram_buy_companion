@@ -1,8 +1,9 @@
-name: Telegram bot poller
+name: Telegram bot poller (disabled — using webhook)
+
+# Replaced by Supabase Edge Function webhook for near-realtime replies.
+# Keep file for emergency rollback: uncomment schedule and delete Telegram webhook first.
 
 on:
-  schedule:
-    - cron: "* * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -11,19 +12,11 @@ concurrency:
 
 jobs:
   poll:
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-
-      - name: Restore Telegram offset
-        uses: actions/cache@v4
-        with:
-          path: .telegram-offset
-          key: telegram-offset-${{ github.run_id }}
-          restore-keys: |
-            telegram-offset-
-
       - name: Poll Telegram
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
