@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>דירות — מעבר דירה</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <header>
+    <h1>סיכום דירות — מעבר דירה</h1>
+    <p class="note">מסונכרן בלייב. סמנו רלוונטי/לא והוסיפו הסבר קצר. דירות חדשות יכולות להגיע גם מבוט טלגרם.</p>
+    <p id="status" class="status">מתחבר…</p>
+  </header>
+
+  <section class="section-relevant">
+    <h2>רלוונטיות <span class="count" id="countRelevant"></span></h2>
+    <div class="wrap" id="relevantWrap"></div>
+  </section>
+
+  <section class="section-dropped">
+    <h2>לא רלוונטיות <span class="count" id="countDropped"></span></h2>
+    <div class="wrap" id="droppedWrap"></div>
+  </section>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
