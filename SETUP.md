@@ -5,7 +5,8 @@ Live shared apartment tracker for Modiin house hunt.
 ## Stack
 - **GitHub Pages** — hosts the website
 - **Supabase** — shared database (apartments + your relevance marks)
-- **Telegram bot** `@bu_companion_bot` — paste listing links; they appear on the site (via GitHub Action poller every minute)
+- **Telegram bot** `@bu_companion_bot` — links / text / photos → site (GitHub Action poller every minute)
+- **Gemini Flash** — parses free-text descriptions and listing photos into apartment rows
 
 ## Add the bot to your group
 
@@ -19,9 +20,15 @@ Live shared apartment tracker for Modiin house hunt.
    - If the bot was already in the group, remove it and add it again after turning privacy off
 
 ## How to use
-- Paste a Yad2 / Madlan / Keyz link in the group (or DM the bot)
+- Paste a Yad2 / Madlan / Keyz link → added immediately (no AI)
+- Or send a text description and/or photos of a listing → Gemini parses it into a row
 - Or: `/add שם | מחיר | חדרים | קישור`
 - Within about a minute it appears on the site
+
+## Secrets (GitHub Actions)
+- `TELEGRAM_BOT_TOKEN`
+- `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`
+- `GEMINI_API_KEY` from https://aistudio.google.com/apikey
 
 ## View the database
 Supabase dashboard → **Table Editor** → `apartments` / `verdicts`
