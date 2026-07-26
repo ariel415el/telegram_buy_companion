@@ -276,6 +276,15 @@ function normalizeGeminiApt(parsed, fallbackNotes) {
 
 function toNum(v) {
   if (v == null || v === "") return null;
+  if (typeof v === "string") {
+    const s = v.trim();
+    // 2.85מ / 2.85M → millions
+    const mil = s.match(/^(\d+(?:\.\d+)?)\s*[מmM](?:illion|׳|'|)?$/i);
+    if (mil) return Math.round(parseFloat(mil[1]) * 1_000_000);
+    const cleaned = s.replace(/[^\d.-]/g, "");
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : null;
+  }
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
