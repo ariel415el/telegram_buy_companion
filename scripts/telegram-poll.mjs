@@ -11,8 +11,16 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const OFFSET_FILE = process.env.OFFSET_FILE || ".telegram-offset";
 const THUMB_BUCKET = "listing-thumbs";
+const META_BUCKET = "bot-meta";
+const USAGE_OBJECT = "gemini-usage.json";
 const GEMINI_MODEL = "gemini-flash-lite-latest";
 const MAX_PHOTOS = 4;
+const SITE_URL = "https://ariel415el.github.io/telegram_buy_companion/";
+const SITE_LINK = "סיכום דירות";
+// Flash-Lite list price (USD / 1M tokens). Free-tier AI Studio keys bill $0.
+const GEMINI_USD_PER_M_IN = 0.1;
+const GEMINI_USD_PER_M_OUT = 0.4;
+const GEMINI_FREE_RPD = 1000;
 
 if (!TOKEN || !SUPABASE_URL || !SERVICE_KEY) {
   console.error("missing env secrets (need TELEGRAM_BOT_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)");
@@ -99,11 +107,13 @@ function largestPhotoFileId(msg) {
 }
 
 const HELP_TEXT =
-  "מוסיף דירות לאתר המשותף שלנו.\n\n" +
+  "מוסיף דירות לאתר המשותף שלנו.\n" +
+  `אתר: <a href="${SITE_URL}">${SITE_LINK}</a>\n\n` +
   "איך להשתמש:\n" +
   "• שלחו קישור (יד2 / מדלן / Keyz) — מתווסף ישר\n" +
   "• או תיאור + תמונות — AI מפרסר ומוסיף\n" +
   "• /add שם | מחיר | חדרים | קישור — הוספה ידנית\n" +
+  "• /costs — כמה עלה Gemini היום ובסה״כ\n" +
   "• /help — ההודעה הזו\n\n" +
   "דירה שכבר קיימת מתעדכנת במקום להיווצר פעמיים.";
 
@@ -116,7 +126,12 @@ async function handleJob(job) {
     text.startsWith("/start@") ||
     text.startsWith("/help@")
   ) {
-    await send(chatId, HELP_TEXT);
+    await send(chatId, HELP_TEXT, { html: true });
+    return;
+  }
+
+  if (text.startsWith("/costs") || text.startsWith("/costs@")) {
+    await send(chatId, await formatCostsMessage());
     return;
   }
 
@@ -249,6 +264,7 @@ async function parseWithGemini(text, images) {
     return null;
   }
   const data = await res.json();
+  await logGeminiUsage(data.usageMetadata || {});
   const raw = data.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") || "";
   return parseJsonLoose(raw);
 }
@@ -366,8 +382,131 @@ async function tg(method, body) {
   return res.json();
 }
 
-async function send(chatId, text) {
-  await tg("sendMessage", { chat_id: chatId, text });
+async function send(chatId, text, { html = false } = {}) {
+  const body = { chat_id: chatId, text };
+  if (html) {
+    body.parse_mode = "HTML";
+    body.disable_web_page_preview = false;
+  }
+  await tg("sendMessage", body);
+}
+
+function estimateCostUsd(promptTokens, outputTokens) {
+  return (promptTokens / 1e6) * GEMINI_USD_PER_M_IN + (outputTokens / 1e6) * GEMINI_USD_PER_M_OUT;
+}
+
+function fmtUsd(n) {
+  if (n < 0.0001) return "$0.0000";
+  if (n < 0.01) return `$${n.toFixed(4)}`;
+  return `$${n.toFixed(2)}`;
+}
+
+async function ensureMetaBucket() {
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
+    method: "POST",
+    headers: {
+      apikey: SERVICE_KEY,
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ id: META_BUCKET, name: META_BUCKET, public: false }),
+  });
+  if (!res.ok && res.status !== 409) {
+    const body = await res.text();
+    if (!/already exists|Duplicate/i.test(body)) console.error("ensureMetaBucket", res.status, body);
+  }
+}
+
+async function loadUsageLog() {
+  await ensureMetaBucket();
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${META_BUCKET}/${USAGE_OBJECT}`, {
+    headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
+  });
+  if (res.status === 404) return { entries: [] };
+  if (!res.ok) {
+    console.error("loadUsageLog", await res.text());
+    return { entries: [] };
+  }
+  try {
+    const data = await res.json();
+    return { entries: Array.isArray(data.entries) ? data.entries : [] };
+  } catch {
+    return { entries: [] };
+  }
+}
+
+async function saveUsageLog(log) {
+  await ensureMetaBucket();
+  const body = JSON.stringify(log);
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${META_BUCKET}/${USAGE_OBJECT}`, {
+    method: "POST",
+    headers: {
+      apikey: SERVICE_KEY,
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      "content-type": "application/json",
+      "x-upsert": "true",
+    },
+    body,
+  });
+  if (!res.ok) console.error("saveUsageLog", await res.text());
+}
+
+async function logGeminiUsage(usage) {
+  const prompt = Number(usage.promptTokenCount || 0);
+  const output = Number(usage.candidatesTokenCount || 0);
+  const total = Number(usage.totalTokenCount || prompt + output);
+  const entry = {
+    ts: new Date().toISOString(),
+    model: GEMINI_MODEL,
+    promptTokens: prompt,
+    outputTokens: output,
+    totalTokens: total,
+    listPriceUsd: estimateCostUsd(prompt, output),
+  };
+  const log = await loadUsageLog();
+  log.entries.push(entry);
+  // keep last ~2000 calls
+  if (log.entries.length > 2000) log.entries = log.entries.slice(-2000);
+  await saveUsageLog(log);
+  return entry;
+}
+
+function dayKey(iso) {
+  return String(iso || "").slice(0, 10); // YYYY-MM-DD UTC
+}
+
+async function formatCostsMessage() {
+  const log = await loadUsageLog();
+  const today = dayKey(new Date().toISOString());
+  const entries = log.entries || [];
+  const todayEntries = entries.filter((e) => dayKey(e.ts) === today);
+
+  const sum = (arr, key) => arr.reduce((s, e) => s + Number(e[key] || 0), 0);
+  const todayList = sum(todayEntries, "listPriceUsd");
+  const totalList = sum(entries, "listPriceUsd");
+  const todayCalls = todayEntries.length;
+  const totalCalls = entries.length;
+  const todayIn = sum(todayEntries, "promptTokens");
+  const todayOut = sum(todayEntries, "outputTokens");
+  const totalIn = sum(entries, "promptTokens");
+  const totalOut = sum(entries, "outputTokens");
+  const leftToday = Math.max(0, GEMINI_FREE_RPD - todayCalls);
+
+  return (
+    "עלויות Gemini (מעקב מהבוט)\n\n" +
+    `היום (${today} UTC):\n` +
+    `• ${todayCalls} קריאות · ${todayIn + todayOut} טוקנים\n` +
+    `• מחיר מחירון: ${fmtUsd(todayList)}\n` +
+    `• חיוב בפועל: $0 (free tier)\n\n` +
+    `סה״כ מאז תחילת המעקב:\n` +
+    `• ${totalCalls} קריאות · ${totalIn + totalOut} טוקנים\n` +
+    `• מחיר מחירון: ${fmtUsd(totalList)}\n` +
+    `• חיוב בפועל: $0 (free tier)\n\n` +
+    `יתרה בחבילה:\n` +
+    `• אין יתרת כסף (מפתח free / AI Studio)\n` +
+    `• מכסת בקשות יומית משוערת: ${leftToday} מתוך ~${GEMINI_FREE_RPD} נותרו היום\n\n` +
+    `מודל: ${GEMINI_MODEL}`
+  );
 }
 
 /** Save apartment, reusing an existing row when URL/name+price match. */

@@ -24,6 +24,7 @@ Live shared apartment tracker for Modiin house hunt.
 - Paste a Yad2 / Madlan / Keyz link → added immediately
 - Or send a text description and/or photos → Gemini parses it
 - `/add שם | מחיר | חדרים | קישור` — manual add
+- `/costs` — Gemini usage/cost today and total
 - Duplicates (same URL or same street+price) update the existing row
 - Within about a minute it appears on the site
 
