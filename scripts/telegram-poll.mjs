@@ -11,7 +11,7 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const OFFSET_FILE = process.env.OFFSET_FILE || ".telegram-offset";
 const THUMB_BUCKET = "listing-thumbs";
-const GEMINI_MODEL = "gemini-2.0-flash";
+const GEMINI_MODEL = "gemini-flash-lite-latest";
 const MAX_PHOTOS = 4;
 
 if (!TOKEN || !SUPABASE_URL || !SERVICE_KEY) {
