@@ -97,12 +97,16 @@
     </table>`;
   }
 
+  function lastModifiedMs(a) {
+    const v = ensureVerdict(a.id);
+    const aptMs = a.updated_at ? Date.parse(a.updated_at) : 0;
+    const verdMs = v.updated_at ? Date.parse(v.updated_at) : 0;
+    const createdMs = a.created_at ? Date.parse(a.created_at) : 0;
+    return Math.max(aptMs, verdMs, createdMs) || 0;
+  }
+
   function render() {
-    const sorted = [...apartments].sort((a, b) => {
-      const ap = a.price == null ? Number.POSITIVE_INFINITY : Number(a.price);
-      const bp = b.price == null ? Number.POSITIVE_INFINITY : Number(b.price);
-      return ap - bp;
-    });
+    const sorted = [...apartments].sort((a, b) => lastModifiedMs(b) - lastModifiedMs(a));
     const relevant = sorted.filter((a) => ensureVerdict(a.id).relevant);
     const dropped = sorted.filter((a) => !ensureVerdict(a.id).relevant);
     document.getElementById("relevantWrap").innerHTML = renderTable(relevant, "relevant");
@@ -112,24 +116,29 @@
   }
 
   async function setRelevant(id, relevant) {
+    const updated_at = new Date().toISOString();
     ensureVerdict(id).relevant = relevant;
+    ensureVerdict(id).updated_at = updated_at;
     render();
     const { error } = await sb.from("verdicts").upsert({
       apartment_id: id,
       relevant,
       note: ensureVerdict(id).note,
-      updated_at: new Date().toISOString(),
+      updated_at,
     });
     if (error) setStatus("שגיאה בשמירה: " + error.message, "err");
   }
 
   async function saveNote(id, note) {
+    const updated_at = new Date().toISOString();
     ensureVerdict(id).note = note;
+    ensureVerdict(id).updated_at = updated_at;
+    render();
     const { error } = await sb.from("verdicts").upsert({
       apartment_id: id,
       relevant: ensureVerdict(id).relevant,
       note,
-      updated_at: new Date().toISOString(),
+      updated_at,
     });
     if (error) setStatus("שגיאה בשמירת הערה: " + error.message, "err");
   }
@@ -150,20 +159,24 @@
   });
 
   function applyApartmentRows(rows) {
-    apartments = (rows || []).map((r) => ({
-      id: r.id,
-      name: r.name,
-      neighborhood: r.neighborhood || "",
-      price: r.price,
-      rooms: r.rooms,
-      built: r.built,
-      garden: r.garden,
-      url: r.url,
-      visited: !!r.visited,
-      expired: !!r.expired,
-      thumb: r.thumb,
-      chat_notes: r.chat_notes || "",
-    }));
+    apartments = (rows || [])
+      .filter((r) => !!r.thumb)
+      .map((r) => ({
+        id: r.id,
+        name: r.name,
+        neighborhood: r.neighborhood || "",
+        price: r.price,
+        rooms: r.rooms,
+        built: r.built,
+        garden: r.garden,
+        url: r.url,
+        visited: !!r.visited,
+        expired: !!r.expired,
+        thumb: r.thumb,
+        chat_notes: r.chat_notes || "",
+        created_at: r.created_at || null,
+        updated_at: r.updated_at || r.created_at || null,
+      }));
   }
 
   function applyVerdictRows(rows) {
@@ -172,6 +185,7 @@
       verdicts[r.apartment_id] = {
         relevant: r.relevant !== false,
         note: r.note || "",
+        updated_at: r.updated_at || null,
       };
     }
   }
