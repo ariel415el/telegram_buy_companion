@@ -203,24 +203,22 @@
   });
 
   function applyApartmentRows(rows) {
-    apartments = (rows || [])
-      .filter((r) => !!r.thumb)
-      .map((r) => ({
-        id: r.id,
-        name: r.name,
-        neighborhood: r.neighborhood || "",
-        price: r.price,
-        rooms: r.rooms,
-        built: r.built,
-        garden: r.garden,
-        url: r.url,
-        visited: !!r.visited,
-        expired: !!r.expired,
-        thumb: r.thumb,
-        chat_notes: r.chat_notes || "",
-        created_at: r.created_at || null,
-        updated_at: r.updated_at || r.created_at || null,
-      }));
+    apartments = (rows || []).map((r) => ({
+      id: r.id,
+      name: r.name,
+      neighborhood: r.neighborhood || "",
+      price: r.price,
+      rooms: r.rooms,
+      built: r.built,
+      garden: r.garden,
+      url: r.url,
+      visited: !!r.visited,
+      expired: !!r.expired,
+      thumb: r.thumb,
+      chat_notes: r.chat_notes || "",
+      created_at: r.created_at || null,
+      updated_at: r.updated_at || r.created_at || null,
+    }));
   }
 
   function applyVerdictRows(rows) {

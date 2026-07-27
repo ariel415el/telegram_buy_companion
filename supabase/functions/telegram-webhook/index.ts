@@ -94,6 +94,7 @@ async function handleMessage(
     const results: string[] = [];
     for (const url of listingUrls) {
       const apt = listingFromUrl(url, text);
+      await enrichFromListingPage(env, apt);
       const { error, created } = await saveApartment(env, apt);
       results.push(
         error
@@ -606,7 +607,7 @@ function listingFromUrl(url: string, context: string) {
   return {
     id: slugId(url),
     name,
-    url,
+    url: cleanListingUrl(url),
     source,
     neighborhood: "",
     price: extractPrice(context),
@@ -615,9 +616,96 @@ function listingFromUrl(url: string, context: string) {
     garden: null,
     visited: false,
     expired: false,
-    thumb: null,
+    thumb: null as string | null,
     chat_notes: context.slice(0, 300),
   };
+}
+
+function cleanListingUrl(url: string) {
+  try {
+    const u = new URL(url);
+    // drop tracking noise
+    u.search = "";
+    u.hash = "";
+    return u.toString().replace(/\/$/, "");
+  } catch {
+    return url;
+  }
+}
+
+/** Fetch OG image (+ title when useful) from Madlan/Keyz listing pages. */
+async function enrichFromListingPage(env: Env, apt: Record<string, unknown>) {
+  const url = String(apt.url || "");
+  if (!url) return;
+  // Facebook share pages usually only expose group cover — skip
+  if (/facebook\.com|fb\.watch/i.test(url)) return;
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept-Language": "he-IL,he;q=0.9,en;q=0.8",
+        Accept: "text/html",
+      },
+      redirect: "follow",
+    });
+    if (!res.ok) {
+      console.warn("enrich fetch", res.status, url);
+      return;
+    }
+    const html = await res.text();
+    const ogImage = matchMeta(html, "og:image");
+    const ogTitle = matchMeta(html, "og:title");
+    if (ogTitle && (/madlan|keyz/i.test(url))) {
+      // e.g. "דירת גן למכירה: לבונה , רעות ... | מדלן"
+      const cleaned = ogTitle.split("|")[0].replace(/\s+למכירה:?/g, "").trim();
+      if (cleaned.length > 5 && cleaned.length < 120) apt.name = cleaned;
+    }
+    if (!ogImage) return;
+    if (/yad2logo|logo\.png|placeholder/i.test(ogImage)) return;
+
+    const imgRes = await fetch(ogImage, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        Referer: url,
+        Accept: "image/*,*/*",
+      },
+    });
+    if (!imgRes.ok) return;
+    const bytes = new Uint8Array(await imgRes.arrayBuffer());
+    if (bytes.length < 5000) return;
+    const ctype = imgRes.headers.get("content-type") || "image/jpeg";
+    const mime = ctype.includes("png")
+      ? "image/png"
+      : ctype.includes("webp")
+      ? "image/webp"
+      : "image/jpeg";
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const thumbUrl = await uploadThumb(env, String(apt.id), {
+      mime,
+      data: btoa(binary),
+      bytes,
+    });
+    if (thumbUrl) apt.thumb = thumbUrl;
+  } catch (err) {
+    console.warn("enrichFromListingPage", err);
+  }
+}
+
+function matchMeta(html: string, prop: string) {
+  const re1 = new RegExp(
+    `property=["']${prop}["'][^>]*content=["']([^"']+)["']`,
+    "i",
+  );
+  const re2 = new RegExp(
+    `content=["']([^"']+)["'][^>]*property=["']${prop}["']`,
+    "i",
+  );
+  const m = html.match(re1) || html.match(re2);
+  return m ? m[1].replace(/&amp;/g, "&") : null;
 }
 
 function extractPrice(text: string) {
