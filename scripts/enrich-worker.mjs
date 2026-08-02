@@ -78,10 +78,15 @@ const TOKEN = readFileSync(
   new URL("../.secrets/telegram_bot_token.txt", import.meta.url),
   "utf8",
 ).trim();
-const GEMINI = readFileSync(
-  new URL("../.secrets/gemini_api_key.txt", import.meta.url),
-  "utf8",
-).trim();
+function readSecretOptional(name) {
+  try {
+    return readFileSync(new URL(`../.secrets/${name}`, import.meta.url), "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+// Optional — only needed for Facebook OCR; Yad2 scrapes via Chrome alone.
+const GEMINI = readSecretOptional("gemini_api_key.txt");
 const META = "bot-meta";
 const QUEUE_PREFIX = "enrich-queue/";
 
@@ -279,6 +284,9 @@ function scrapeOk(fields) {
 }
 
 async function scrapeFacebookFields({ aptId, url }) {
+  if (!GEMINI) {
+    return { ok: false, reason: "gemini_missing" };
+  }
   const scraped = await scrapeFacebook(url, {
     screenshot: true,
     timeoutMs: SCRAPE_TIMEOUT_MS,

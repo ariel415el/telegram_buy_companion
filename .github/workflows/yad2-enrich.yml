@@ -32,9 +32,14 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           mkdir -p .secrets
           printf 'SUPABASE_URL=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\n' "$SUPABASE_URL" "$SUPABASE_SERVICE_ROLE_KEY" > .secrets/supabase.env
           printf '%s\n' "$TELEGRAM_BOT_TOKEN" > .secrets/telegram_bot_token.txt
+          # Optional — Facebook OCR only; Yad2 does not need it.
+          if [ -n "$GEMINI_API_KEY" ]; then
+            printf '%s\n' "$GEMINI_API_KEY" > .secrets/gemini_api_key.txt
+          fi
       - name: Enrich
         run: xvfb-run -a node scripts/enrich-worker.mjs

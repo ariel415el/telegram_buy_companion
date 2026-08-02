@@ -352,7 +352,11 @@ async function handleMessage(
     }
     if (results.length) await send(env.token, chatId, results.join("\n\n"));
     else if (queued && !results.length) {
-      // Still processing in background; worker will report success or failure.
+      await send(
+        env.token,
+        chatId,
+        "המודעה בתור — אעדכן כשאסיים לקרוא אותה (עד כמה דקות).",
+      );
     }
     return;
   }
