@@ -43,7 +43,8 @@
 
   function thumbSrc(a) {
     if (!a.thumb) return null;
-    return a.thumb;
+    if (/^https?:\/\//i.test(a.thumb)) return a.thumb;
+    return a.thumb.replace(/^\//, "");
   }
 
   function renderTable(list, mode) {
@@ -106,7 +107,10 @@
   }
 
   function render() {
-    const sorted = [...apartments].sort((a, b) => lastModifiedMs(b) - lastModifiedMs(a));
+    // Show cards that have a real photo; URL is optional (manual photo+description).
+    const sorted = [...apartments]
+      .filter((a) => a.thumb)
+      .sort((a, b) => lastModifiedMs(b) - lastModifiedMs(a));
     const relevant = sorted.filter((a) => ensureVerdict(a.id).relevant);
     const dropped = sorted.filter((a) => !ensureVerdict(a.id).relevant);
     document.getElementById("relevantWrap").innerHTML = renderTable(relevant, "relevant");

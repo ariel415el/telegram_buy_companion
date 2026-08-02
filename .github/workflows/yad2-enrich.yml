@@ -1,0 +1,40 @@
+name: Yad2 enrich worker
+
+# Headed Chrome via xvfb clears Yad2 Radware; fills street name + photo.
+# Never touches verdicts.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: yad2-enrich
+  cancel-in-progress: false
+
+jobs:
+  enrich:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Chrome + xvfb + patchright
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb google-chrome-stable
+          npm install patchright
+          npx patchright install chromium
+      - name: Write secrets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          mkdir -p .secrets
+          printf 'SUPABASE_URL=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\n' "$SUPABASE_URL" "$SUPABASE_SERVICE_ROLE_KEY" > .secrets/supabase.env
+          printf '%s\n' "$TELEGRAM_BOT_TOKEN" > .secrets/telegram_bot_token.txt
+      - name: Enrich
+        run: xvfb-run -a node scripts/enrich-worker.mjs

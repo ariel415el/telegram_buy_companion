@@ -1,5 +1,13 @@
 {
   "name": "modiin-apartments",
   "version": "1.0.0",
-  "private": true
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "enrich": "node scripts/enrich-worker.mjs",
+    "enrich:loop": "node scripts/enrich-worker.mjs --loop"
+  },
+  "dependencies": {
+    "patchright": "^1.61.1"
+  }
 }
